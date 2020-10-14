@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Minesweeper</title>
+    <style>
+        body {
+            background: black;
+            color: #DDDDDD;
+            text-align: center;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        h1 {
+            text-align: center;
+            font-weight: normal;
+            font-size: 20pt;
+        }
+        
+        #grid {
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        #grid TR TD.default {
+            border: 1px solid white;
+            background: #999999;
+            width: 25px;
+            height: 25px;
+            text-align: center;
+        }
+        
+        #grid tr td.clicked {
+            border: 1px solid white;
+            background: #333333;
+            width: 25px;
+            height: 25px;
+            text-align: center;
+        }
+        
+        #grid TR TD.mine {
+            border: 1px solid white;
+            background: red;
+            width: 25px;
+            height: 25px;
+            text-align: center;
+        }
+        
+        #grid TR TD.flagged {
+            border: 1px solid white;
+            background: orange;
+            width: 25px;
+            height: 25px;
+            text-align: center;
+        }
+        
+        button {
+            margin-top: 10px;
+            border: 1px solid white;
+            background-color: #333333;
+            color: white;
+            width: 75px;
+            height: 40px;
+            font-family: 'Courier New', Courier, monospace;
+            text-align: center;
+            font-size: 1ch;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Minesweeper</h1>
+    <audio id="bombblast"><source src="C:\Users\soumyasarang\Downloads\Bomb+7.mp3" type="audio/mpeg"></audio>
+    <div id="grid_div">
+    </div>
+    <button onclick="reset()">Reset</button>
+    <h1 id="stopwatch">0:00</h1>
+    <script>
+        var grid = null;
+        var testMode = false; //Make it true to see all mines/numbers
+        var enablefunctions = true; //Make it false to disable functions
+        var bombblast = document.getElementById("bombblast");
+        var clicks = 0;
+        var interval = null;
+        //TIMER STUFF
+        var stopwatch = document.getElementById("stopwatch");
+        var secs = 0;
+        var mins = 0;
+
+        var numMines = 20;
+        var numRowCol = 10;
+
+        initGrid();
+
+        function initGrid() {
+            grid_div = document.getElementById("grid_div");
+            grid_div.innerHTML = '<table id="grid"></table>';
+            grid = document.getElementById("grid");
+            createGrid();
+        }
+
+        function createGrid() {
+            //add required rows and columns to grid
+            for (var i = 0; i < numRowCol; i++) {
+                row = grid.insertRow(i);
+                for (var j = 0; j < numRowCol; j++) {
+                    cell = row.insertCell(j)
+                    cell.className = "default";
+                    cell.onclick = function(event) {
+                        if (event.ctrlKey) {
+                            flagCell(this);
+                        } else {
+                            clickCell(this);
+                        }
+                    };
+                    cell.ondblclick = function() {
+                        flag(this);
+                    }
+                    var mine = document.createAttribute("data-mine");
+                    mine.value = "false";
+                    cell.setAttributeNode(mine);
+                    var number = document.createAttribute("data-number");
+                    cell.setAttributeNode(number)
+                }
+            }
+            addMines();
+        }
+
+        function addMines() {
+            for (var i = 0; i < numMines; i++) {
+                var row = Math.floor(Math.random() * numRowCol);
+                var col = Math.floor(Math.random() * numRowCol);
+                var cell = grid.rows[row].cells[col];
+                while (cell.getAttribute("data-mine") == "true") {
+                    row = Math.floor(Math.random() * numRowCol);
+                    col = Math.floor(Math.random() * numRowCol);
+                    cell = grid.rows[row].cells[col];
+                }
+                cell.setAttribute("data-mine", "true");
+                if (testMode) cell.innerHTML = "X";
+            }
+            //set all cells (except mines) to 0
+            for (var i = 0; i < numRowCol; i++) {
+                for (var j = 0; j < numRowCol; j++) {
+                    cell = grid.rows[i].cells[j];
+                    if (!(cell.getAttribute("data-mine") == "true")) {
+                        cell.setAttribute("data-number", Number(0));
+                    }
+                }
+            }
+            //add 1 to all the cells adjacent to each mine
+            for (var i = 0; i < numRowCol; i++) {
+                for (var j = 0; j < numRowCol; j++) {
+                    cell = grid.rows[i].cells[j];
+                    if (cell.getAttribute("data-mine") == "true") {
+                        addNumber(i, j - 1);
+                        addNumber(i - 1, j - 1);
+                        addNumber(i - 1, j);
+                        addNumber(i - 1, j + 1);
+                        addNumber(i, j + 1);
+                        addNumber(i + 1, j + 1);
+                        addNumber(i + 1, j);
+                        addNumber(i + 1, j - 1);
+                    }
+                }
+            }
+        }
+
+        function addNumber(row, col) {
+            if (row < 0 || row > (numRowCol - 1)) {
+                return;
+            }
+            if (col < 0 || col > (numRowCol - 1)) {
+                return;
+            }
+            cell = grid.rows[row].cells[col];
+            if (!(cell.getAttribute("data-mine") == "true")) {
+                var num = Number(cell.getAttribute("data-number"));
+                num += 1;
+                cell.setAttribute("data-number", num);
+            }
+        }
+
+        function clickCell(cell) {
+            startTimer();
+            clicks++;
+
+            var cellRow = cell.parentNode.rowIndex; //returns index of the row
+            var cellCol = cell.cellIndex; //returns index of the cell within the row (aka the column)
+            if (cell.getAttribute("data-mine") == "true") {
+                bombblast.play();
+                reveal();
+            } else if (cell.getAttribute("data-number") == 0) {
+                //change background and display the 0
+                cell.className = "clicked";
+                cell.innerHTML = cell.getAttribute("data-number");
+                //reveal all adjacent cells that don't have a mine
+                for (var i = Math.max(cellRow - 1, 0); i <= Math.min(cellRow + 1, (numRowCol - 1)); i++) {
+                    for (var j = Math.max(cellCol - 1, 0); j <= Math.min(cellCol + 1, (numRowCol - 1)); j++) {
+                        //if an adjacent cell is also a 0, call the same function again
+                        if (grid.rows[i].cells[j].innerHTML == "") clickCell(grid.rows[i].cells[j]);
+                    }
+                }
+            } else {
+                cell.className = "clicked";
+                cell.innerHTML = cell.getAttribute("data-number");
+            }
+            if (cell.getAttribute("data-mine") != "true") {
+                checkWin();
+            }
+
+        }
+
+        function reveal() { //Sometimes enabled, sometimes disabled
+            if (enablefunctions == true) {
+                stopTimer();
+                alert("Game Over");
+                for (var i = 0; i < numRowCol; i++) {
+                    for (var j = 0; j < numRowCol; j++) {
+                        cell = grid.rows[i].cells[j];
+                        if (cell.getAttribute("data-mine") == "true") {
+                            cell.className = "mine";
+                        } else {
+                            cell.className = "clicked";
+                            cell.innerHTML = cell.getAttribute("data-number");
+                        }
+                    }
+                }
+                enablefunctions = false;
+            }
+        }
+
+        function checkWin() { //Sometimes enabled, sometimes disabled
+            if (enablefunctions == true) {
+                for (var i = 0; i < numRowCol; i++) {
+                    for (var j = 0; j < numRowCol; j++) {
+                        cell = grid.rows[i].cells[j];
+                        if (cell.className != "clicked") {
+                            if (cell.getAttribute("data-mine") != "true") {
+                                return;
+                            }
+                        }
+                    }
+                }
+                stopTimer();
+                alert("Congratulations! You win!");
+                for (var i = 0; i < numRowCol; i++) {
+                    for (var j = 0; j < numRowCol; j++) {
+                        cell = grid.rows[i].cells[j];
+                        if (cell.getAttribute("data-mine") == "true") {
+                            cell.className = "mine";
+                        }
+                    }
+                }
+                enablefunctions = false;
+            }
+        }
+
+        function flagCell(cell) { //Sometimes enabled, sometimes disabled
+            if (enablefunctions == true) {
+                if (cell.className != "clicked") {
+                    if (cell.className == "flagged") {
+                        cell.className = "default";
+                    } else {
+                        cell.className = "flagged";
+                    }
+                }
+            }
+        }
+
+        function reset() {
+            clicks = 0;
+            enablefunctions = true;
+            stopTimer();
+            stopwatch.innerHTML = "0:00";
+            initGrid();
+        }
+
+        function updateScreenTime() {
+            var sec_string = "";
+            if (secs < 59) {
+                secs++;
+            } else {
+                secs = 0;
+                mins++;
+            }
+            if (secs < 10) {
+                sec_string = "0" + String(secs);
+            } else {
+                sec_string = String(secs);
+            }
+            stopwatch.innerHTML = String(mins) + ":" + sec_string;
+        }
+
+        function startTimer() {
+            if (clicks == 0) {
+                updateScreenTime();
+                interval = setInterval(updateScreenTime, 1000);
+            }
+        }
+
+        function stopTimer() {
+            if (interval != null) {
+                secs = 0;
+                mins = 0;
+                clearInterval(interval);
+                interval = null;
+            }
+        }
+    </script>
+</body>
